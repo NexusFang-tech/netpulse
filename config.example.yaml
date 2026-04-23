@@ -1,0 +1,77 @@
+# NetPulse Configuration
+# Copy to config.yaml and fill in your values
+
+meraki:
+  # Get from Meraki Dashboard > API & Webhooks > Generate new API key
+  api_key: "YOUR_MERAKI_API_KEY_HERE"
+  # Find via API call: GET /organizations
+  organization_id: "YOUR_ORG_ID"
+  # Find via API call: GET /organizations/{id}/networks
+  network_id: "YOUR_NETWORK_ID"
+  # Poll interval in seconds (Meraki allows 5 req/sec, 30s is very safe)
+  poll_interval_seconds: 30
+
+# SSIDs to monitor. Names are free-form labels; numbers must match Meraki.
+# Find SSID numbers via: GET /networks/{id}/wireless/ssids
+# The "critical" flag means outages on this SSID trigger loud alerts.
+# Recommended pattern: set employee/staff SSIDs critical=true,
+# keep at least one non-critical "control" SSID (e.g. guest) to detect
+# the Phase-2-likely pattern where employee networks degrade but guest is fine.
+ssids:
+  - name: "corp-primary"
+    number: 0
+    critical: true
+  - name: "corp-mobile"
+    number: 1
+    critical: true
+  - name: "corp-guest"
+    number: 2
+    critical: false  # Control / baseline network
+
+# Local probes run from this machine
+probes:
+  enabled: true
+  interval_seconds: 15
+  # Gateway IP for your local VLAN (check `ipconfig` Default Gateway)
+  gateway_ip: "10.0.0.1"
+  # Internal DNS server (leave blank to use system resolver)
+  dns_server: ""
+  # External target (distinguishes internal vs upstream issues)
+  external_target: "1.1.1.1"
+  # Domain to test DNS resolution against
+  dns_test_domain: "example.com"
+  # Ping timeout in ms
+  ping_timeout_ms: 2000
+
+# Detection thresholds
+detection:
+  # % drop in client count over lookback window that triggers alert
+  client_drop_percent: 30
+  client_drop_lookback_seconds: 120
+  # Consecutive failed pings before marking gateway down
+  ping_failure_threshold: 3
+  # DNS resolution time (ms) considered degraded
+  dns_slow_threshold_ms: 500
+  # If critical SSIDs degrade AND control SSID is healthy, flag as likely Phase 2 issue
+  phase2_pattern_detection: true
+
+# Alerting
+alerts:
+  desktop_notifications: true
+  sound_enabled: true
+  # Sound file path (leave blank for system default)
+  sound_file: ""
+  # Minimum seconds between duplicate alerts (prevent spam)
+  dedupe_seconds: 300
+
+# Storage
+database:
+  path: "data/netpulse.db"
+  retention_days: 30
+
+# Web dashboard
+web:
+  host: "127.0.0.1"
+  port: 8787
+  # Auto-refresh interval on the dashboard (ms)
+  refresh_interval_ms: 5000

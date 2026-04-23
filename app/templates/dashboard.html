@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NETPULSE // Network Sentinel</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=VT323&family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="scanlines"></div>
+  <div class="grid-bg"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-main">NET<span class="brand-accent">PULSE</span></span>
+      <span class="brand-sub">// network sentinel v1.0</span>
+    </div>
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="overall-status" id="overall-status">
+      <span class="status-dot" id="status-dot"></span>
+      <span class="status-label" id="status-label">INITIALIZING</span>
+    </div>
+  </header>
+
+  <section class="verdict-panel" id="verdict-panel">
+    <div class="verdict-header">
+      <span class="verdict-tag" id="verdict-pattern">—</span>
+      <span class="verdict-time" id="verdict-time"></span>
+    </div>
+    <div class="verdict-summary" id="verdict-summary">Awaiting first evaluation...</div>
+    <ul class="verdict-recs" id="verdict-recs"></ul>
+  </section>
+
+  <main class="grid">
+    <section class="card ssid-grid" id="ssid-grid">
+      <h2 class="card-title">&#9670; SSID TELEMETRY</h2>
+      <div class="ssid-tiles" id="ssid-tiles"></div>
+    </section>
+
+    <section class="card probes-card">
+      <h2 class="card-title">&#9670; LOCAL PROBES</h2>
+      <div class="probe-list" id="probe-list"></div>
+    </section>
+
+    <section class="card events-card">
+      <h2 class="card-title">&#9670; EVENT FEED</h2>
+      <div class="events-list" id="events-list"></div>
+    </section>
+
+    <section class="card incidents-card">
+      <h2 class="card-title">&#9670; INCIDENT LOG</h2>
+      <div class="incidents-list" id="incidents-list"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>REFRESH ::: <span id="refresh-interval">{{ refresh_ms }}</span>ms</span>
+    <span>POLLING ::: <span id="last-poll">--</span></span>
+    <span>// bounce the phase 2 and go home</span>
+  </footer>
+
+  <script>
+    window.NETPULSE_CONFIG = {
+      refreshMs: {{ refresh_ms }},
+      ssids: {{ ssids | tojson }}
+    };
+  </script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
