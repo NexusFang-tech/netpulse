@@ -16,12 +16,18 @@
   <header class="topbar">
     <div class="brand">
       <span class="brand-main">NET<span class="brand-accent">PULSE</span></span>
-      <span class="brand-sub">// network sentinel v1.0</span>
+      <span class="brand-sub">// network sentinel v1.1</span>
     </div>
     <div class="clock" id="clock">--:--:--</div>
-    <div class="overall-status" id="overall-status">
-      <span class="status-dot" id="status-dot"></span>
-      <span class="status-label" id="status-label">INITIALIZING</span>
+    <div class="topbar-right">
+      <button class="settings-btn" id="settings-btn" title="Open Settings">
+        <span class="settings-icon">&#9881;</span>
+        <span class="settings-label">CONFIG</span>
+      </button>
+      <div class="overall-status" id="overall-status">
+        <span class="status-dot" id="status-dot"></span>
+        <span class="status-label" id="status-label">INITIALIZING</span>
+      </div>
     </div>
   </header>
 
@@ -61,6 +67,35 @@
     <span>POLLING ::: <span id="last-poll">--</span></span>
     <span>// bounce the phase 2 and go home</span>
   </footer>
+
+  <!-- Settings Modal -->
+  <div class="settings-modal" id="settings-modal" aria-hidden="true">
+    <div class="settings-backdrop" id="settings-backdrop"></div>
+    <div class="settings-panel" role="dialog" aria-labelledby="settings-title">
+      <div class="settings-header">
+        <div class="settings-title-group">
+          <span class="settings-diamond">&#9670;</span>
+          <h2 id="settings-title">CONFIGURATION</h2>
+          <span class="settings-subtitle">// live tuning</span>
+        </div>
+        <button class="settings-close" id="settings-close" aria-label="Close">&#10005;</button>
+      </div>
+      <div class="settings-meta">
+        <span class="settings-meta-label">CONFIG FILE</span>
+        <span class="settings-meta-value" id="settings-config-path">—</span>
+      </div>
+      <div class="settings-body" id="settings-body">
+        <div class="settings-loading">Loading settings...</div>
+      </div>
+      <div class="settings-footer">
+        <div class="settings-status" id="settings-status"></div>
+        <div class="settings-actions">
+          <button class="settings-btn-reset" id="settings-reset">REVERT</button>
+          <button class="settings-btn-save" id="settings-save">&#9889; APPLY &amp; RELOAD</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script>
     window.NETPULSE_CONFIG = {

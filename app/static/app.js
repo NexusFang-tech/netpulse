@@ -242,3 +242,266 @@
   pollOnce();
   setInterval(pollOnce, cfg.refreshMs);
 })();
+
+// ============================================================================
+// Settings Modal
+// ============================================================================
+(function () {
+  "use strict";
+
+  var modal = document.getElementById("settings-modal");
+  var btn = document.getElementById("settings-btn");
+  var closeBtn = document.getElementById("settings-close");
+  var backdrop = document.getElementById("settings-backdrop");
+  var body = document.getElementById("settings-body");
+  var saveBtn = document.getElementById("settings-save");
+  var resetBtn = document.getElementById("settings-reset");
+  var statusEl = document.getElementById("settings-status");
+  var pathEl = document.getElementById("settings-config-path");
+
+  if (!modal || !btn) return; // settings UI not present
+
+  var schema = [];       // array of setting definitions (from API)
+  var originalValues = {}; // key -> value at open time
+  var currentValues = {};  // key -> value being edited
+
+  function escapeHtml(s) {
+    if (s === null || s === undefined) return "";
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function openSettings() {
+    modal.classList.add("open");
+    modal.setAttribute("aria-hidden", "false");
+    loadSettings();
+  }
+
+  function closeSettings() {
+    modal.classList.remove("open");
+    modal.setAttribute("aria-hidden", "true");
+    setStatus("", "");
+  }
+
+  function setStatus(text, cls) {
+    statusEl.textContent = text;
+    statusEl.className = "settings-status " + (cls || "");
+  }
+
+  function loadSettings() {
+    body.innerHTML = '<div class="settings-loading">Loading settings...</div>';
+    fetch("/api/settings")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        schema = data.settings || [];
+        pathEl.textContent = data.config_path || "—";
+        originalValues = {};
+        currentValues = {};
+        schema.forEach(function (s) {
+          originalValues[s.key] = s.current;
+          currentValues[s.key] = s.current;
+        });
+        renderSettings();
+        setStatus("Settings loaded.", "info");
+        updateButtons();
+      })
+      .catch(function (err) {
+        body.innerHTML = '<div class="settings-loading">Failed to load settings.</div>';
+        setStatus("Error: " + err, "error");
+      });
+  }
+
+  function renderSettings() {
+    var html = "";
+    schema.forEach(function (s) {
+      if (s.type === "bool") {
+        html += renderBoolRow(s);
+      } else {
+        html += renderNumberRow(s);
+      }
+    });
+    body.innerHTML = html;
+    wireInputs();
+  }
+
+  function renderNumberRow(s) {
+    var val = currentValues[s.key];
+    var unit = s.unit ? '<span class="setting-unit">' + escapeHtml(s.unit) + '</span>' : '';
+    var displayVal = formatValue(s, val);
+    return '' +
+      '<div class="setting-row" data-key="' + escapeHtml(s.key) + '">' +
+        '<div class="setting-top">' +
+          '<span class="setting-label" data-label>' + escapeHtml(s.label) + '</span>' +
+          '<span class="setting-value-display" data-display>' + displayVal + unit + '</span>' +
+        '</div>' +
+        '<div class="setting-description">' + escapeHtml(s.description) + '</div>' +
+        '<div class="setting-slider-wrap">' +
+          '<input type="range" class="setting-slider" data-input ' +
+            'min="' + s.min + '" max="' + s.max + '" step="' + (s.step || 1) + '" ' +
+            'value="' + val + '" />' +
+        '</div>' +
+        '<div class="setting-range-labels">' +
+          '<span>' + s.min + '</span><span>' + s.max + '</span>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function renderBoolRow(s) {
+    var val = currentValues[s.key];
+    var onClass = val ? "on" : "";
+    var labelClass = val ? "on" : "off";
+    var labelText = val ? "ENABLED" : "DISABLED";
+    return '' +
+      '<div class="setting-row" data-key="' + escapeHtml(s.key) + '">' +
+        '<div class="setting-top">' +
+          '<span class="setting-label" data-label>' + escapeHtml(s.label) + '</span>' +
+        '</div>' +
+        '<div class="setting-description">' + escapeHtml(s.description) + '</div>' +
+        '<div class="setting-bool-row">' +
+          '<div class="setting-toggle ' + onClass + '" data-toggle role="switch" aria-checked="' + val + '"></div>' +
+          '<span class="setting-toggle-label ' + labelClass + '" data-toggle-label>' + labelText + '</span>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function formatValue(s, val) {
+    if (s.type === "int") {
+      if (s.key === "baseline_window_seconds" && val >= 60) {
+        var mins = Math.round(val / 60);
+        return val + ' <span style="color:var(--text-muted);font-size:.8rem">(' + mins + 'm)</span>';
+      }
+      if (s.key === "dedupe_seconds" && val >= 60) {
+        var dmins = Math.round(val / 60);
+        return val + ' <span style="color:var(--text-muted);font-size:.8rem">(' + dmins + 'm)</span>';
+      }
+      return val;
+    }
+    return val;
+  }
+
+  function wireInputs() {
+    var rows = body.querySelectorAll(".setting-row");
+    rows.forEach(function (row) {
+      var key = row.getAttribute("data-key");
+      var spec = findSpec(key);
+      if (!spec) return;
+      if (spec.type === "bool") {
+        var toggle = row.querySelector("[data-toggle]");
+        toggle.addEventListener("click", function () {
+          currentValues[key] = !currentValues[key];
+          toggle.classList.toggle("on", currentValues[key]);
+          toggle.setAttribute("aria-checked", String(currentValues[key]));
+          var lbl = row.querySelector("[data-toggle-label]");
+          lbl.textContent = currentValues[key] ? "ENABLED" : "DISABLED";
+          lbl.className = "setting-toggle-label " + (currentValues[key] ? "on" : "off");
+          markChanged(row, key);
+          updateButtons();
+        });
+      } else {
+        var input = row.querySelector("[data-input]");
+        var display = row.querySelector("[data-display]");
+        input.addEventListener("input", function () {
+          var v = parseInt(input.value, 10);
+          currentValues[key] = v;
+          var unit = spec.unit ? '<span class="setting-unit">' + escapeHtml(spec.unit) + '</span>' : '';
+          display.innerHTML = formatValue(spec, v) + unit;
+          markChanged(row, key);
+          updateButtons();
+        });
+      }
+    });
+  }
+
+  function markChanged(row, key) {
+    var label = row.querySelector("[data-label]");
+    if (currentValues[key] !== originalValues[key]) {
+      label.classList.add("changed");
+    } else {
+      label.classList.remove("changed");
+    }
+  }
+
+  function findSpec(key) {
+    for (var i = 0; i < schema.length; i++) {
+      if (schema[i].key === key) return schema[i];
+    }
+    return null;
+  }
+
+  function hasChanges() {
+    for (var k in currentValues) {
+      if (currentValues[k] !== originalValues[k]) return true;
+    }
+    return false;
+  }
+
+  function updateButtons() {
+    var dirty = hasChanges();
+    saveBtn.disabled = !dirty;
+    resetBtn.disabled = !dirty;
+  }
+
+  function save() {
+    if (!hasChanges()) return;
+    setStatus("Saving...", "info");
+    saveBtn.disabled = true;
+    resetBtn.disabled = true;
+    var updates = {};
+    for (var k in currentValues) {
+      if (currentValues[k] !== originalValues[k]) {
+        updates[k] = currentValues[k];
+      }
+    }
+    fetch("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ updates: updates })
+    })
+      .then(function (r) {
+        return r.json().then(function (data) { return { ok: r.ok, data: data }; });
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          var errMsg = "Save failed.";
+          if (result.data && result.data.detail) {
+            if (typeof result.data.detail === "string") errMsg = result.data.detail;
+            else if (result.data.detail.errors) errMsg = result.data.detail.errors.join("; ");
+          }
+          setStatus(errMsg, "error");
+          updateButtons();
+          return;
+        }
+        setStatus("Saved. Detection engine reloaded.", "success");
+        // Refresh the schema so originalValues reflect saved state
+        schema = result.data.settings || schema;
+        originalValues = {};
+        schema.forEach(function (s) { originalValues[s.key] = s.current; currentValues[s.key] = s.current; });
+        renderSettings();
+        updateButtons();
+      })
+      .catch(function (err) {
+        setStatus("Network error: " + err, "error");
+        updateButtons();
+      });
+  }
+
+  function reset() {
+    schema.forEach(function (s) { currentValues[s.key] = originalValues[s.key]; });
+    renderSettings();
+    setStatus("Changes reverted.", "info");
+    updateButtons();
+  }
+
+  btn.addEventListener("click", openSettings);
+  closeBtn.addEventListener("click", closeSettings);
+  backdrop.addEventListener("click", closeSettings);
+  saveBtn.addEventListener("click", save);
+  resetBtn.addEventListener("click", reset);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && modal.classList.contains("open")) closeSettings();
+  });
+})();

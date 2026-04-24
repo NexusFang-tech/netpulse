@@ -108,8 +108,15 @@ class DetectionEngine:
 
     # ------------------------------------------------------------------
     def _evaluate_ssids(self) -> list[SsidStatus]:
-        lookback = self.thresholds.get("client_drop_lookback_seconds", 120)
+        # Longer window = "what normal looks like", not "what I saw 2 min ago"
+        baseline_window = self.thresholds.get("baseline_window_seconds", 1800)  # 30 min
+        # Short window = what's happening right now (not used for baseline, just current)
         drop_pct_threshold = self.thresholds.get("client_drop_percent", 30)
+        # Percentile of the baseline window to use as "peak" (90 = robust against
+        # single-sample spikes but still reflects typical high-water mark)
+        baseline_percentile = self.thresholds.get("baseline_percentile", 90)
+        # Minimum number of samples before we trust the baseline at all
+        min_samples = self.thresholds.get("baseline_min_samples", 5)
         now = int(time.time())
         statuses: list[SsidStatus] = []
 
@@ -119,19 +126,37 @@ class DetectionEngine:
                 statuses.append(SsidStatus(name, cfg.get("critical", False), 0, 0, 0.0, True))
                 continue
 
-            # Baseline = max client count in lookback window (catches the drop from peak)
-            history = self.db.get_ssid_history(name, now - lookback)
-            baseline = max((h["client_count"] for h in history), default=latest["client_count"])
+            history = self.db.get_ssid_history(name, now - baseline_window)
+            counts = [h["client_count"] for h in history]
             current = latest["client_count"]
 
-            if baseline == 0:
+            if len(counts) < min_samples:
+                # Not enough data yet -- fall back to max, treat as healthy while warming up
+                baseline = max(counts, default=current)
                 drop_pct = 0.0
+                healthy = True
             else:
-                drop_pct = max(0.0, (baseline - current) / baseline * 100.0)
+                # Use Nth percentile of the baseline window. This reflects typical
+                # peak behavior without being distorted by a single-sample max or
+                # pulled down by the current dip itself.
+                sorted_counts = sorted(counts)
+                idx = int(len(sorted_counts) * baseline_percentile / 100.0)
+                if idx >= len(sorted_counts):
+                    idx = len(sorted_counts) - 1
+                baseline = sorted_counts[idx]
+                # Never let the baseline be lower than current -- that would make
+                # drops negative and mask outages.
+                if baseline < current:
+                    baseline = current
 
-            # "Healthy" means either we haven't seen a big drop OR the absolute count
-            # is tiny anyway (early morning, after hours -- not actionable).
-            healthy = drop_pct < drop_pct_threshold or baseline < 5
+                if baseline == 0:
+                    drop_pct = 0.0
+                else:
+                    drop_pct = max(0.0, (baseline - current) / baseline * 100.0)
+
+                # Healthy = small drop OR absolute count too low to matter
+                # (after-hours / weekend safeguard)
+                healthy = drop_pct < drop_pct_threshold or baseline < 5
 
             statuses.append(SsidStatus(
                 name=name,

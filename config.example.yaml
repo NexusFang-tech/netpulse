@@ -1,5 +1,6 @@
 # NetPulse Configuration
-# Copy to config.yaml and fill in your values
+# Copy to config.yaml and fill in your values.
+# Many fields below are adjustable live from the dashboard Settings panel.
 
 meraki:
   # Get from Meraki Dashboard > API & Webhooks > Generate new API key
@@ -11,12 +12,11 @@ meraki:
   # Poll interval in seconds (Meraki allows 5 req/sec, 30s is very safe)
   poll_interval_seconds: 30
 
-# SSIDs to monitor. Names are free-form labels; numbers must match Meraki.
-# Find SSID numbers via: GET /networks/{id}/wireless/ssids
-# The "critical" flag means outages on this SSID trigger loud alerts.
-# Recommended pattern: set employee/staff SSIDs critical=true,
-# keep at least one non-critical "control" SSID (e.g. guest) to detect
-# the Phase-2-likely pattern where employee networks degrade but guest is fine.
+# SSIDs to monitor. Numbers must match Meraki's SSID numbers exactly.
+# Find via: GET /networks/{id}/wireless/ssids
+# Pattern: set employee/staff SSIDs critical=true, keep at least one
+# non-critical "control" SSID (e.g. guest) so the Phase-2 pattern can fire
+# (critical SSIDs degrade while guest stays healthy).
 ssids:
   - name: "corp-primary"
     number: 0
@@ -43,33 +43,38 @@ probes:
   # Ping timeout in ms
   ping_timeout_ms: 2000
 
-# Detection thresholds
+# Detection thresholds -- all adjustable from the dashboard Settings panel
 detection:
-  # % drop in client count over lookback window that triggers alert
+  # How long a window of history defines "normal" (300-7200)
+  baseline_window_seconds: 1800
+  # Which percentile of that window counts as peak (50-100)
+  baseline_percentile: 90
+  # Samples needed before baseline is trusted (2-30)
+  baseline_min_samples: 5
+  # % drop from baseline that triggers alert (10-80)
   client_drop_percent: 30
-  client_drop_lookback_seconds: 120
-  # Consecutive failed pings before marking gateway down
+  # Consecutive failed pings before marking gateway/external down (1-10)
   ping_failure_threshold: 3
   # DNS resolution time (ms) considered degraded
   dns_slow_threshold_ms: 500
-  # If critical SSIDs degrade AND control SSID is healthy, flag as likely Phase 2 issue
+  # Toggle the specific 'critical SSIDs drop, guest stable' pattern
   phase2_pattern_detection: true
 
-# Alerting
+# Alerting -- adjustable from the dashboard Settings panel
 alerts:
   desktop_notifications: true
   sound_enabled: true
   # Sound file path (leave blank for system default)
   sound_file: ""
-  # Minimum seconds between duplicate alerts (prevent spam)
+  # Minimum seconds between duplicate alerts (30-1800)
   dedupe_seconds: 300
 
-# Storage
+# Storage -- requires restart to change
 database:
   path: "data/netpulse.db"
   retention_days: 30
 
-# Web dashboard
+# Web dashboard -- requires restart to change
 web:
   host: "127.0.0.1"
   port: 8787

@@ -17,6 +17,7 @@ from .database import Database
 from .detection import DetectionEngine
 from .meraki_client import MerakiClient
 from .notifier import Notifier
+from . import settings as settings_mod
 
 
 log = logging.getLogger(__name__)
@@ -36,7 +37,13 @@ def load_config(path: str = "config.yaml") -> dict:
 
 
 def build_app(config_path: str = "config.yaml") -> FastAPI:
-    config = load_config(config_path)
+    config_path_obj = Path(config_path)
+    # Mutable holder so hot-reload can update these in place from endpoints
+    state = {
+        "config": load_config(config_path),
+    }
+    config = state["config"]
+
     db = Database(config["database"]["path"])
 
     meraki_cfg = config.get("meraki", {})
@@ -73,8 +80,8 @@ def build_app(config_path: str = "config.yaml") -> FastAPI:
             "dashboard.html",
             {
                 "request": request,
-                "refresh_ms": config.get("web", {}).get("refresh_interval_ms", 5000),
-                "ssids": [s["name"] for s in config.get("ssids", [])],
+                "refresh_ms": state["config"].get("web", {}).get("refresh_interval_ms", 5000),
+                "ssids": [s["name"] for s in state["config"].get("ssids", [])],
             },
         )
 
@@ -131,6 +138,55 @@ def build_app(config_path: str = "config.yaml") -> FastAPI:
     async def ack_incident(incident_id: int):
         db.acknowledge_incident(incident_id)
         return {"ok": True}
+
+    # ---- Settings endpoints -----------------------------------------------
+    @app.get("/api/settings")
+    async def api_settings_get():
+        """Return full settings schema with current values."""
+        return {
+            "settings": settings_mod.get_current_settings(state["config"]),
+            "config_path": str(config_path_obj.resolve()),
+        }
+
+    @app.post("/api/settings")
+    async def api_settings_post(payload: dict):
+        """Update settings. Hot-reloads affected components without restart."""
+        if not isinstance(payload, dict) or "updates" not in payload:
+            raise HTTPException(status_code=400, detail="Expected {updates: {...}}")
+        updates = payload["updates"]
+        if not isinstance(updates, dict):
+            raise HTTPException(status_code=400, detail="updates must be an object")
+
+        validated, errors = settings_mod.validate_updates(updates)
+        if errors:
+            raise HTTPException(status_code=400, detail={"errors": errors})
+
+        # Apply to in-memory config
+        new_config = settings_mod.apply_updates_to_config(state["config"], validated)
+
+        # Write to disk
+        try:
+            settings_mod.write_config(new_config, config_path_obj)
+        except Exception as e:  # noqa: BLE001
+            log.exception("Failed to write config")
+            raise HTTPException(status_code=500, detail=f"Write failed: {e}")
+
+        # Hot-reload: rebuild detector with new thresholds + update notifier dedupe
+        state["config"] = new_config
+        detector.thresholds = new_config.get("detection", {})
+        detector.config = new_config
+        # Notifier pulls from config each call, but update the instance fields directly
+        alerts_cfg = new_config.get("alerts", {})
+        notifier.enabled = alerts_cfg.get("desktop_notifications", True)
+        notifier.sound_enabled = alerts_cfg.get("sound_enabled", True)
+        notifier.dedupe_seconds = alerts_cfg.get("dedupe_seconds", 300)
+
+        log.info("Settings updated and hot-reloaded: %s", list(validated.keys()))
+        return {
+            "ok": True,
+            "applied": validated,
+            "settings": settings_mod.get_current_settings(new_config),
+        }
 
     @app.get("/healthz")
     async def healthz():
