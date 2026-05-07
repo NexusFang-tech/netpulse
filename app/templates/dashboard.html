@@ -3,20 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NETPULSE // Network Sentinel</title>
+  <title>NetPulse</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=VT323&family=JetBrains+Mono:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css" />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=VT323&family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div class="scanlines"></div>
-  <div class="grid-bg"></div>
+  <div class="bg-grid"></div>
+  <div class="bg-scanlines"></div>
 
   <header class="topbar">
     <div class="brand">
       <span class="brand-main">NET<span class="brand-accent">PULSE</span></span>
-      <span class="brand-sub">// network sentinel v1.1</span>
+      <span class="brand-sub">// network sentinel v1.2</span>
     </div>
     <div class="clock" id="clock">--:--:--</div>
     <div class="topbar-right">
@@ -31,41 +31,113 @@
     </div>
   </header>
 
-  <section class="verdict-panel" id="verdict-panel">
-    <div class="verdict-header">
-      <span class="verdict-tag" id="verdict-pattern">—</span>
-      <span class="verdict-time" id="verdict-time"></span>
-    </div>
-    <div class="verdict-summary" id="verdict-summary">Awaiting first evaluation...</div>
-    <ul class="verdict-recs" id="verdict-recs"></ul>
-  </section>
-
-  <main class="grid">
-    <section class="card ssid-grid" id="ssid-grid">
-      <h2 class="card-title">&#9670; SSID TELEMETRY</h2>
-      <div class="ssid-tiles" id="ssid-tiles"></div>
+  <main class="main">
+    <!-- Verdict / overall status -->
+    <section class="verdict-card" id="verdict-card">
+      <div class="verdict-header">
+        <span class="verdict-pattern" id="verdict-pattern">NOMINAL</span>
+        <span class="verdict-time" id="verdict-time">--:--:--</span>
+      </div>
+      <div class="verdict-summary" id="verdict-summary">All monitored networks within normal range.</div>
+      <ul class="verdict-recs" id="verdict-recs"></ul>
     </section>
 
-    <section class="card probes-card">
-      <h2 class="card-title">&#9670; LOCAL PROBES</h2>
-      <div class="probe-list" id="probe-list"></div>
+    <!-- Row 1: SSID + Local Probes -->
+    <section class="grid-row">
+      <div class="panel panel-wide">
+        <div class="panel-header"><span class="panel-diamond">&#9670;</span><h3>SSID TELEMETRY</h3></div>
+        <div class="panel-body">
+          <div class="ssid-grid" id="ssid-grid"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="panel-diamond">&#9670;</span><h3>LOCAL PROBES</h3></div>
+        <div class="panel-body">
+          <div class="probe-list" id="probe-list"></div>
+        </div>
+      </div>
     </section>
 
-    <section class="card events-card">
-      <h2 class="card-title">&#9670; EVENT FEED</h2>
-      <div class="events-list" id="events-list"></div>
+    <!-- Row 2: AP Activity (NEW v1.2) -->
+    <section class="grid-row">
+      <div class="panel panel-full">
+        <div class="panel-header">
+          <span class="panel-diamond">&#9670;</span>
+          <h3>ACCESS POINT ACTIVITY</h3>
+          <span class="panel-meta" id="ap-summary">—</span>
+        </div>
+        <div class="panel-body">
+          <div class="ap-grid" id="ap-grid">
+            <div class="empty-state">Waiting for AP data...</div>
+          </div>
+        </div>
+      </div>
     </section>
 
-    <section class="card incidents-card">
-      <h2 class="card-title">&#9670; INCIDENT LOG</h2>
-      <div class="incidents-list" id="incidents-list"></div>
+    <!-- Row 3: Devices Online (left, large) + log panels stacked (right) -->
+    <section class="grid-row grid-row-devices">
+      <div class="panel panel-devices">
+        <div class="panel-header">
+          <span class="panel-diamond">&#9670;</span>
+          <h3>DEVICES ONLINE</h3>
+          <span class="panel-meta" id="devices-count">0</span>
+          <input type="text" class="device-search" id="device-search" placeholder="// search name, mac, ssid..." />
+        </div>
+        <div class="panel-body">
+          <table class="device-table" id="device-table">
+            <thead>
+              <tr>
+                <th data-sort="display_name">Name</th>
+                <th data-sort="manufacturer">Manufacturer</th>
+                <th data-sort="ssid">SSID</th>
+                <th data-sort="ap_name">AP</th>
+                <th data-sort="ip">IP</th>
+                <th data-sort="vlan">VLAN</th>
+                <th data-sort="last_seen">Last Seen</th>
+              </tr>
+            </thead>
+            <tbody id="device-tbody">
+              <tr><td colspan="7" class="empty-state">Waiting for device data...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="logs-column">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-diamond">&#9670;</span>
+            <h3>RECENT DISCONNECTS</h3>
+          </div>
+          <div class="panel-body">
+            <div class="drops-list" id="drops-list">
+              <div class="empty-state">No recent disconnects.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header"><span class="panel-diamond">&#9670;</span><h3>EVENT FEED</h3></div>
+          <div class="panel-body">
+            <div class="event-list" id="event-list"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header"><span class="panel-diamond">&#9670;</span><h3>INCIDENT LOG</h3></div>
+          <div class="panel-body">
+            <div class="incident-list" id="incident-list"></div>
+          </div>
+        </div>
+      </div>
     </section>
   </main>
 
   <footer class="footer">
-    <span>REFRESH ::: <span id="refresh-interval">{{ refresh_ms }}</span>ms</span>
-    <span>POLLING ::: <span id="last-poll">--</span></span>
-    <span>// bounce the phase 2 and go home</span>
+    <span>REFRESH ::: <span id="refresh-rate">5000ms</span></span>
+    <span>POLLING ::: <span id="poll-time">--:--:--</span></span>
+    <span class="footer-tagline">// bounce the phase 2 and go home</span>
   </footer>
 
   <!-- Settings Modal -->
@@ -93,6 +165,23 @@
           <button class="settings-btn-reset" id="settings-reset">REVERT</button>
           <button class="settings-btn-save" id="settings-save">&#9889; APPLY &amp; RELOAD</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AP detail modal -->
+  <div class="ap-modal" id="ap-modal" aria-hidden="true">
+    <div class="settings-backdrop" id="ap-backdrop"></div>
+    <div class="settings-panel" role="dialog">
+      <div class="settings-header">
+        <div class="settings-title-group">
+          <span class="settings-diamond">&#9670;</span>
+          <h2 id="ap-modal-title">AP DETAIL</h2>
+        </div>
+        <button class="settings-close" id="ap-close" aria-label="Close">&#10005;</button>
+      </div>
+      <div class="settings-body" id="ap-modal-body">
+        <div class="settings-loading">Loading...</div>
       </div>
     </div>
   </div>

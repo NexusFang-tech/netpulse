@@ -1,7 +1,11 @@
 """Meraki Dashboard API client.
 
-Uses read-only endpoints to pull client counts, events, and assurance alerts.
-Only the minimum surface area needed for DHCP outage detection.
+Read-only endpoints for device-level monitoring. Polls:
+- per-SSID client counts (clientCountHistory)
+- full client roster with names/hostnames/AP attribution
+- per-AP client counts
+- network events
+- assurance alerts
 """
 import logging
 from typing import Any
@@ -24,9 +28,9 @@ class MerakiClient:
             headers={
                 "X-Cisco-Meraki-API-Key": api_key,
                 "Accept": "application/json",
-                "User-Agent": "NetPulse/1.0",
+                "User-Agent": "NetPulse/1.2",
             },
-            timeout=15.0,
+            timeout=20.0,
         )
 
     async def close(self) -> None:
@@ -38,7 +42,8 @@ class MerakiClient:
             r.raise_for_status()
             return r.json()
         except httpx.HTTPStatusError as e:
-            log.warning("Meraki API %s returned %s: %s", path, e.response.status_code, e.response.text[:200])
+            log.warning("Meraki API %s returned %s: %s",
+                        path, e.response.status_code, e.response.text[:200])
             raise
         except httpx.RequestError as e:
             log.warning("Meraki API %s request error: %s", path, e)
@@ -48,26 +53,13 @@ class MerakiClient:
     async def get_ssid_clients(self, ssid_numbers: list[int] | None = None,
                                ssid_name_map: dict[int, str] | None = None,
                                timespan_seconds: int = 600) -> list[dict]:
-        """Client counts per SSID using clientCountHistory (the endpoint that actually works).
+        """Per-SSID client counts via clientCountHistory.
 
-        The /clients endpoint drops SSID labels for MAC-randomized devices (most
-        modern phones), so it's unreliable. clientCountHistory aggregates counts
-        server-side per SSID number and always returns data.
-
-        Args:
-          ssid_numbers: list of SSID numbers to query (e.g. [0, 3, 2] for
-                        e.g. corp-primary, corp-mobile, corp-guest). Required.
-          ssid_name_map: {ssid_number: ssid_name} to label results.
-          timespan_seconds: lookback window; min 600 (10 min) per Meraki API.
-
-        Returns list of {ssidName, clientCount, usageMb} entries -- one per SSID
-        queried. clientCount is the latest bucket in the time series.
+        See get_clients() for the full per-device roster.
         """
         if not ssid_numbers:
             return []
         name_map = ssid_name_map or {}
-        # API requires resolution to divide evenly into timespan; 300s buckets
-        # with 600s timespan gives 2 buckets which is enough for "latest"
         resolution = 300
         if timespan_seconds < resolution * 2:
             timespan_seconds = resolution * 2
@@ -83,61 +75,103 @@ class MerakiClient:
                         "ssid": num,
                     },
                 )
-            except httpx.HTTPStatusError as e:
-                log.warning("clientCountHistory failed for ssid=%s: %s", num, e)
+            except httpx.HTTPStatusError:
                 continue
-
             if not data:
                 continue
-
-            # Latest non-null bucket is our "current" count
             latest_count = 0
             for bucket in reversed(data):
                 cc = bucket.get("clientCount")
                 if cc is not None:
                     latest_count = int(cc)
                     break
-
             results.append({
                 "ssidName": name_map.get(num, f"ssid-{num}"),
                 "ssidNumber": num,
                 "clientCount": latest_count,
-                "usageMb": 0.0,  # not available from this endpoint; usage history is separate
+                "usageMb": 0.0,
             })
         return results
+
+    async def get_clients(self, timespan_seconds: int = 300, per_page: int = 1000) -> list[dict]:
+        """Full client roster -- the rich per-device data.
+
+        Returns list of dicts with: mac, description, dhcpHostname, manufacturer,
+        os, ip, ssid, recentDeviceName (AP), vlan, status, usage{sent,recv}, lastSeen.
+        """
+        try:
+            data = await self._get(
+                f"/networks/{self.network_id}/clients",
+                params={"timespan": timespan_seconds, "perPage": per_page},
+            )
+            return data if isinstance(data, list) else []
+        except httpx.HTTPStatusError as e:
+            log.warning("get_clients failed: %s", e)
+            return []
+
+    async def get_devices(self) -> list[dict]:
+        """All Meraki devices (APs, switches, MX) in the network. Returns list with
+        name, serial, model, lanIp, mac, etc."""
+        try:
+            return await self._get(f"/networks/{self.network_id}/devices") or []
+        except httpx.HTTPStatusError:
+            return []
+
+    async def get_ap_client_counts(self) -> list[dict]:
+        """Per-AP client counts. Strictly limited to wireless APs (MR/CW models)
+        -- switches, MX firewalls, and cameras are excluded so the AP grid only
+        shows actual access points.
+
+        Returns list of {serial, name, clientCount}.
+        """
+        clients = await self.get_clients(timespan_seconds=300)
+        devices = await self.get_devices()
+
+        # Build serial -> name map for APs ONLY (model starts with 'CW' or 'MR').
+        # This is the canonical list of APs -- nothing outside this map is an AP.
+        ap_serial_to_name: dict[str, str] = {}
+        for d in devices:
+            model = (d.get("model") or "")
+            if model.startswith("MR") or model.startswith("CW"):
+                serial = d.get("serial", "")
+                if serial:
+                    ap_serial_to_name[serial] = d.get("name") or "Unknown AP"
+
+        # Initialize all known APs with zero clients. Only these will be reported.
+        counts: dict[str, dict] = {
+            name: {"name": name, "serial": serial, "clientCount": 0}
+            for serial, name in ap_serial_to_name.items()
+        }
+
+        # Count wireless clients per AP. Skip clients whose recentDeviceSerial
+        # isn't a known AP serial -- those are wired clients on switches/MX,
+        # not wireless clients on an AP.
+        for c in clients:
+            client_serial = c.get("recentDeviceSerial") or ""
+            if client_serial not in ap_serial_to_name:
+                continue
+            ap_name = ap_serial_to_name[client_serial]
+            counts[ap_name]["clientCount"] += 1
+
+        return list(counts.values())
 
     async def get_network_events(self, product_type: str = "wireless",
                                  included_types: list[str] | None = None,
                                  per_page: int = 100) -> list[dict]:
-        """Recent network events. For wireless, this includes DHCP events.
-
-        Meraki event types we care about:
-          - dhcp_no_leases, dhcp_nack, dhcp_alert
-          - association, disassociation (mass disassoc is a signal)
-          - device_packet_flood
-        """
-        params: dict[str, Any] = {
-            "productType": product_type,
-            "perPage": per_page,
-        }
+        params: dict[str, Any] = {"productType": product_type, "perPage": per_page}
         if included_types:
             params["includedEventTypes[]"] = included_types
         try:
             data = await self._get(f"/networks/{self.network_id}/events", params=params)
-            # Response shape: {"events": [...], "pageStartAt": ..., "pageEndAt": ...}
             if isinstance(data, dict):
                 return data.get("events", [])
             return data or []
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 400:
-                # Fallback: some networks require different productType
-                log.info("Events endpoint rejected productType=%s, trying appliance", product_type)
-                if product_type != "appliance":
-                    return await self.get_network_events("appliance", included_types, per_page)
+            if e.response.status_code == 400 and product_type != "appliance":
+                return await self.get_network_events("appliance", included_types, per_page)
             return []
 
     async def get_assurance_alerts(self) -> list[dict]:
-        """Org-level assurance alerts (active). Includes DHCP issues, gateway unreachable, etc."""
         try:
             data = await self._get(
                 f"/organizations/{self.organization_id}/assurance/alerts",
@@ -148,12 +182,10 @@ class MerakiClient:
             return data.get("items", []) if isinstance(data, dict) else []
         except httpx.HTTPStatusError as e:
             if e.response.status_code in (403, 404):
-                log.info("Assurance alerts endpoint unavailable (may need license)")
                 return []
             return []
 
     async def get_devices_statuses(self) -> list[dict]:
-        """Per-device online/offline status for the org, filtered to this network."""
         try:
             data = await self._get(
                 f"/organizations/{self.organization_id}/devices/statuses",
