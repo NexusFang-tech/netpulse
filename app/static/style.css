@@ -781,3 +781,151 @@ body {
   .device-search { width: 100%; margin-top: 0.5rem; }
   .panel-header { flex-wrap: wrap; }
 }
+
+/* ========== DHCP Health panel (v1.3) ========== */
+.dhcp-panel {
+  border-color: var(--neon-cyan);
+}
+.dhcp-panel.degraded {
+  border-color: var(--neon-yellow);
+  box-shadow: 0 0 25px rgba(255, 230, 0, 0.4);
+}
+.dhcp-panel.outage {
+  border-color: var(--neon-red);
+  box-shadow: 0 0 35px rgba(255, 56, 96, 0.5);
+  animation: dhcp-pulse 2s infinite;
+}
+@keyframes dhcp-pulse {
+  0%, 100% { box-shadow: 0 0 25px rgba(255, 56, 96, 0.4); }
+  50% { box-shadow: 0 0 50px rgba(255, 56, 96, 0.7); }
+}
+.dhcp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+.dhcp-probe {
+  border: 1px solid rgba(0, 229, 255, 0.25);
+  background: rgba(10, 4, 21, 0.4);
+  padding: 0.85rem;
+  position: relative;
+  transition: all 0.2s;
+}
+.dhcp-probe::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0;
+  width: 3px; height: 100%;
+  background: var(--neon-green);
+  box-shadow: 0 0 6px var(--neon-green);
+}
+.dhcp-probe.fail::before {
+  background: var(--neon-red);
+  box-shadow: 0 0 6px var(--neon-red);
+}
+.dhcp-probe.warn::before {
+  background: var(--neon-yellow);
+  box-shadow: 0 0 6px var(--neon-yellow);
+}
+.dhcp-probe.disabled::before {
+  background: var(--text-muted);
+  box-shadow: none;
+}
+.dhcp-probe.fail {
+  border-color: var(--neon-red);
+}
+.dhcp-probe-label {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text-primary);
+  margin-bottom: 0.4rem;
+}
+.dhcp-probe-status {
+  font-family: 'VT323', monospace;
+  font-size: 1.7rem;
+  color: var(--neon-cyan);
+  text-shadow: 0 0 6px rgba(0, 229, 255, 0.4);
+  line-height: 1;
+}
+.dhcp-probe.fail .dhcp-probe-status {
+  color: var(--neon-red);
+  text-shadow: 0 0 6px rgba(255, 56, 96, 0.5);
+}
+.dhcp-probe.warn .dhcp-probe-status {
+  color: var(--neon-yellow);
+  text-shadow: 0 0 6px rgba(255, 230, 0, 0.5);
+}
+.dhcp-probe-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  margin-top: 0.35rem;
+  letter-spacing: 1.5px;
+}
+.dhcp-probe-detail {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-top: 0.3rem;
+}
+.dhcp-sparkline {
+  height: 24px;
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+}
+.dhcp-spark-bar {
+  flex: 1;
+  min-width: 2px;
+  background: var(--neon-green);
+  opacity: 0.6;
+  transition: all 0.2s;
+}
+.dhcp-spark-bar.fail {
+  background: var(--neon-red);
+  opacity: 0.9;
+}
+
+.dhcp-events-bar {
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  background: rgba(10, 4, 21, 0.6);
+  border-left: 2px solid var(--neon-cyan);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+}
+.dhcp-events-bar.has-events {
+  border-left-color: var(--neon-yellow);
+}
+.dhcp-events-label {
+  color: var(--neon-cyan);
+  letter-spacing: 2px;
+  font-weight: 700;
+  margin-right: 0.6rem;
+  font-size: 0.7rem;
+}
+.dhcp-events-content {
+  color: var(--text-secondary);
+}
+.dhcp-events-bar.has-events .dhcp-events-content {
+  color: var(--neon-yellow);
+}
+
+/* DHCP advisory state -- INFORM probe failing in isolation. Renders yellow
+   instead of red because the DHCP service is likely fine and the probe is
+   being filtered by a firewall on the path. */
+.dhcp-probe.advisory::before {
+  background: var(--neon-yellow);
+  box-shadow: 0 0 6px var(--neon-yellow);
+}
+.dhcp-probe.advisory {
+  border-color: rgba(255, 230, 0, 0.4);
+}
+.dhcp-probe.advisory .dhcp-probe-status {
+  color: var(--neon-yellow);
+  text-shadow: 0 0 6px rgba(255, 230, 0, 0.5);
+  font-size: 1.4rem;  /* "ADVISORY" is longer than "FAIL" */
+}
